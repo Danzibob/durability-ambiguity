@@ -10,6 +10,11 @@ import com.couchbase.client.java.kv.ReplaceOptions;
 import com.couchbase.client.java.kv.GetResult;
 import com.couchbase.client.java.kv.MutationResult;
 
+import com.couchbase.transactions.*;
+import com.couchbase.transactions.config.TransactionConfig;
+import com.couchbase.transactions.config.TransactionConfigBuilder;
+import com.couchbase.transactions.error.TransactionFailed;
+
 // import com.couchbase.client.java.kv.;
 import java.lang.Thread;
 import java.util.Iterator;
@@ -25,12 +30,17 @@ public class Client {
     private Cluster cluster;
     private Bucket bucket;
     private Collection collection;
+    private Transactions transactions;
 
     public Client() {
         System.out.println("Hello World!");
         cluster = Cluster.connect("couchbase://10.112.193.103", "Administrator", "password");
         bucket = cluster.bucket("default");
         collection = bucket.defaultCollection();
+        TransactionConfig conf = TransactionConfigBuilder.create()
+            .durabilityLevel(TransactionDurabilityLevel.MAJORITY_AND_PERSIST_ON_MASTER)
+            .build();
+        transactions = Transactions.create(cluster, conf);
     }
 
     public MutationResult setupDocs(String key) {
@@ -177,6 +187,35 @@ public class Client {
             // Retry the same operation starting from the current doc state
             addBalance_Durable_ID(key, amount, uuid);
         }
+    }
+
+    // Making use of SDK3.0's transactions makes the whole process MUCH simpler
+
+    public void addBalance_Durable_Transaction(String key, int amount) {
+        System.out.println("Transaction begin.");
+        try {
+            transactions.run((ctx) -> {
+                // Get current document
+                TransactionGetResult res = ctx.get(collection, key);
+                JsonObject doc = res.contentAs(JsonObject.class);
+
+                // Increase balance
+                int newBalance = doc.getInt("balance") + amount;
+                doc.put("balance", newBalance);
+                
+                // Perform replace (durability is set globally for all transaction calls)
+                ctx.replace(res, doc);
+
+                ctx.commit();
+            });
+        } catch (TransactionFailed ex) {
+            ex.printStackTrace();
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
+
+        System.out.println("Transaction over.");
+        
     }
 
     private void remove_UUID(String key, String uuid) {

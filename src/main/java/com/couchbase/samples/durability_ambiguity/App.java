@@ -11,7 +11,7 @@ public final class App {
     public static void main(String[] args) {
         Client c = new Client();
         c.setupDocs("Jtest1");
-        c.addBalance_Durable_ID("Jtest1", 5);
+        c.addBalance_Durable_Transaction("Jtest1", 5);
     }
 }
 
