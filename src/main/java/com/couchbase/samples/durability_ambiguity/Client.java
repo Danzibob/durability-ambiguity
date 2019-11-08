@@ -36,7 +36,7 @@ public class Client {
 
     public Client() {
         System.out.println("Hello World!");
-        cluster = Cluster.connect("couchbase://10.112.193.103", "Administrator", "password");
+        cluster = Cluster.connect("10.112.195.101", "Administrator", "password");
         bucket = cluster.bucket("default");
         collection = bucket.defaultCollection();
         TransactionConfig conf = TransactionConfigBuilder.create()
@@ -166,7 +166,7 @@ public class Client {
 
             if(res.cas() != initialRes.cas()){
                 // Document has been modified - check for our transaction ID:
-                JsonArray mods = res.contentAsObject().getArray("mods");
+                mods = res.contentAsObject().getArray("mods");
                 boolean found_tr = false;
                 for(Iterator<Object> I = mods.iterator(); I.hasNext();){
                     if(I.next() == uuid){
