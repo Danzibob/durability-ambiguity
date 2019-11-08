@@ -10,7 +10,7 @@ public final class App {
      */
     public static void main(String[] args) {
         Client c = new Client();
-        c.setupDocs("Jtest1");
+        c.setupDocs("Jtest1", 20);
         c.addBalance_Durable_Transaction("Jtest1", 5);
     }
 }

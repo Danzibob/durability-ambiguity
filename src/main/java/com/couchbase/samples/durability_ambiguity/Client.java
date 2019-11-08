@@ -14,11 +14,13 @@ import com.couchbase.transactions.*;
 import com.couchbase.transactions.config.TransactionConfig;
 import com.couchbase.transactions.config.TransactionConfigBuilder;
 import com.couchbase.transactions.error.TransactionFailed;
+import com.couchbase.transactions.log.*;
 
 // import com.couchbase.client.java.kv.;
 import java.lang.Thread;
 import java.util.Iterator;
 import java.util.UUID;
+import java.util.logging.*;
 /**
  * To force a durability ambiguous error, try
  * to durable upsert a key to an active node,
@@ -43,12 +45,12 @@ public class Client {
         transactions = Transactions.create(cluster, conf);
     }
 
-    public MutationResult setupDocs(String key) {
+    public MutationResult setupDocs(String key, int bal) {
         // initial document upsert
         JsonArray mods = JsonArray.create();
         JsonObject doc = JsonObject.create()
             .put("name", "Jeff")
-            .put("balance", 23)
+            .put("balance", bal)
             .put("mods", mods);
         return collection.upsert(key, doc);
     }
@@ -117,6 +119,17 @@ public class Client {
         GetResult initialRes = collection.get(key);
         JsonObject doc = initialRes.contentAsObject();
 
+        // Check transaction ID isn't already in the doc (in the case of a retry)
+        JsonArray mods = doc.getArray("mods");
+        Iterator<Object> M = mods.iterator();
+        for(String m = M.next().toString(); M.hasNext(); m = M.next().toString()){
+            if(m == uuid){
+                // Previously retried operation must have got through. Remove it and return success
+                remove_UUID(key, uuid);
+                return;
+            }
+        }
+
         // Increase balance
         int newBalance = doc.getInt("balance") + amount;
         doc.put("balance", newBalance);
@@ -136,7 +149,6 @@ public class Client {
             collection.replace(key, doc, rep_opts).cas();
             // If it succeeded, we can remove the record of the transaction (if necessary)
             // (Some systems may already keep a transaction log, which can be re-used in place of this uuid system)
-            // Keep trying until there wasn't a concurrent modification or error
             remove_UUID(key, uuid);
 
         } catch (DurabilityAmbiguousException ambg_ex) {
@@ -193,8 +205,9 @@ public class Client {
 
     public void addBalance_Durable_Transaction(String key, int amount) {
         System.out.println("Transaction begin.");
+
         try {
-            transactions.run((ctx) -> {
+            TransactionResult result = transactions.run((ctx) -> {
                 // Get current document
                 TransactionGetResult res = ctx.get(collection, key);
                 JsonObject doc = res.contentAs(JsonObject.class);
@@ -208,13 +221,18 @@ public class Client {
 
                 ctx.commit();
             });
+
+            System.out.println("Transaction over.");
+
+            for (LogDefer err : result.log().logs()) {
+                System.out.println(err.toString());
+            }
+
         } catch (TransactionFailed ex) {
             ex.printStackTrace();
         } catch (Exception ex) {
             ex.printStackTrace();
         }
-
-        System.out.println("Transaction over.");
         
     }
 
